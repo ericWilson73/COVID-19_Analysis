@@ -1,0 +1,112 @@
+---
+title: "COVID-19 study"
+output: html_document
+date: "2022-11-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+## Purpose
+To identify notable trends in both new cases and deaths from COVID-19 in select countries. 
+Possible biases in the data could prevent accurate reporting. One bias could be that certain authoritarian countries will not report their numbers accurately.  But an even bigger issue could be that, as vaccines and treatments alleviate symptoms, citizens will stop self-reporting when they have COVID.  This will render results less trustworthy. 
+
+## Defining and importing COVID datasets from online John Hopkins github source
+```{r defineCOVIDData}
+urlIn <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+files_in <- c("time_series_covid19_confirmed_US.csv","time_series_covid19_confirmed_global.csv","time_series_covid19_deaths_US.csv","time_series_covid19_deaths_global.csv")
+
+urls <- str_c(urlIn, files_in)
+
+usCases <- read_csv(urls[1])
+
+globalCases <- read_csv(urls[2])
+
+usDeaths <- read_csv(urls[3])
+
+globalDeaths <- read_csv(urls[4])
+
+```
+
+## Tidying and Transforming Data
+
+### joining case and death data and pivoting the date columns. Also renaming columns
+```{r tidyCOVIDData}
+globalCases <- globalCases %>% pivot_longer(cols= -c('Province/State', 'Country/Region', Lat, Long), names_to="date", values_to = "cases") %>% select (-c(Lat, Long))
+
+globalDeaths <- globalDeaths %>% pivot_longer(cols= -c('Province/State', 'Country/Region', Lat, Long), names_to="date", values_to = "deaths") %>% select (-c(Lat, Long))
+
+```
+
+```{r joinCOVIDData}
+library(lubridate)
+globalData <- globalCases %>% full_join(globalDeaths) %>% 
+  rename(Country.Region = 'Country/Region', Province.State = 'Province/State') %>%
+  mutate(date = mdy(date), yy = year(date), mm = month(date))
+
+globalData <- transform(globalData, cases = as.numeric(cases))
+head(globalData)
+
+```
+
+### removing all rows that note zero (0) cases since they hold no value
+```{r removeZeroCOVIDData}
+globalData <- globalData %>% filter(cases > 0)
+
+globalData <- globalData %>% unite("Combined_Key", c(Province.State, Country.Region), 
+                                   sep=", ", na.rm=TRUE, remove=FALSE)
+
+globalSample <- globalData[globalData$Country.Region %in% c('US','Nigeria', 'Brazil', 'India', 'Russia'),] 
+
+
+```
+
+## Visualizing Data
+
+### plotting a line graph of the daily CASES from COVID, 2020 until present day
+### Took some of the largest countries from each of the continents - US,Nigeria,Brazil,India,Russia
+
+```{r viz1}
+library(ggplot2)
+
+ggplot(globalSample) + geom_line(aes(x = date, y = cases, color = Country.Region)) +
+labs(title = "New Cases of COVID-19 for 2020 - A Sampling from every continent", x = "DATE", y = "Nbr of Cases")
+
+```
+
+### Now plotting a line graph of the daily DEATHS from COVID, 2020 until present day
+### Took some of the largest countries from each of the continents - US,Nigeria,Brazil,India,Russia
+
+```{r viz2}
+library(ggplot2)
+
+ggplot(globalSample) + geom_line(aes(x = date, y = deaths, color = Country.Region)) +
+labs(title = "COVID-19 Deaths for 2020 - A Sampling from every continent", x = "DATE", y = "Nbr of Deaths")
+
+``` 
+
+
+## Analyzing Data
+
+### Creating model with 2020, 2021 training data
+### Then using 2022 as test data
+```{r modelIt}
+
+global20_21 <- globalSample[globalSample$yy == 2020 || globalSample$yy == 2021,] 
+
+globalModel <- lm(cases~Country.Region, data=global20_21)
+
+summary(globalModel)
+
+plot(globalModel)
+
+global22 <- globalSample[globalSample$yy == 2022,] 
+
+predict(globalModel, newdata=global22)
+
+
+
+```
+
+
